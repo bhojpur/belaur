@@ -1,0 +1,396 @@
+package belaur
+
+// Copyright (c) 2018 Bhojpur Consulting Private Limited, India. All rights reserved.
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+import (
+	"os"
+	"time"
+
+	"github.com/golang-jwt/jwt"
+	"github.com/hashicorp/go-hclog"
+	"github.com/robfig/cron"
+)
+
+// PipelineType represents supported plugin types
+type PipelineType string
+
+// CreatePipelineType represents the different status types
+// a create pipeline can have.
+type CreatePipelineType string
+
+// PipelineRunStatus represents the different status a run
+// can have.
+type PipelineRunStatus string
+
+// JobStatus represents the different status a job can have
+type JobStatus string
+
+// Mode represents the different modes for Bhojpur Belaur
+type Mode string
+
+// WorkerStatus represents the different status a worker can have
+type WorkerStatus string
+
+const (
+	// PTypeUnknown unknown plugin type
+	PTypeUnknown PipelineType = "unknown"
+
+	// PTypeGolang golang plugin type
+	PTypeGolang PipelineType = "golang"
+
+	// PTypeJava java plugin type
+	PTypeJava PipelineType = "java"
+
+	// PTypePython python plugin type
+	PTypePython PipelineType = "python"
+
+	// PTypeCpp C++ plugin type
+	PTypeCpp PipelineType = "cpp"
+
+	// PTypeRuby ruby plugin type
+	PTypeRuby PipelineType = "ruby"
+
+	// PTypeNodeJS NodeJS plugin type
+	PTypeNodeJS PipelineType = "nodejs"
+
+	// CreatePipelineFailed status
+	CreatePipelineFailed CreatePipelineType = "failed"
+
+	// CreatePipelineRunning status
+	CreatePipelineRunning CreatePipelineType = "running"
+
+	// CreatePipelineSuccess status
+	CreatePipelineSuccess CreatePipelineType = "success"
+
+	// RunNotScheduled status
+	RunNotScheduled PipelineRunStatus = "not scheduled"
+
+	// RunScheduled status
+	RunScheduled PipelineRunStatus = "scheduled"
+
+	// RunFailed status
+	RunFailed PipelineRunStatus = "failed"
+
+	// RunSuccess status
+	RunSuccess PipelineRunStatus = "success"
+
+	// RunRunning status
+	RunRunning PipelineRunStatus = "running"
+
+	// RunCancelled status
+	RunCancelled PipelineRunStatus = "cancelled"
+
+	// RunReschedule status
+	RunReschedule PipelineRunStatus = "reschedule"
+
+	// JobWaitingExec status
+	JobWaitingExec JobStatus = "waiting for execution"
+
+	// JobSuccess status
+	JobSuccess JobStatus = "success"
+
+	// JobFailed status
+	JobFailed JobStatus = "failed"
+
+	// JobRunning status
+	JobRunning JobStatus = "running"
+
+	// ModeServer mode
+	ModeServer Mode = "server"
+
+	// ModeWorker mode
+	ModeWorker Mode = "worker"
+
+	// WorkerActive status
+	WorkerActive WorkerStatus = "active"
+
+	// WorkerInactive status
+	WorkerInactive WorkerStatus = "inactive"
+
+	// WorkerSuspended status
+	WorkerSuspended WorkerStatus = "suspended"
+
+	// LogsFolderName represents the Name of the logs folder in pipeline run folder
+	LogsFolderName = "logs"
+
+	// LogsFileName represents the file name of the logs output
+	LogsFileName = "output.log"
+
+	// APIVersion represents the current API version
+	APIVersion = "v1"
+
+	// SrcFolder folder name where the sources are stored
+	SrcFolder = "src"
+
+	// TmpFolder is the temp folder for temporary files
+	TmpFolder = "tmp"
+
+	// TmpPythonFolder is the name of the python temporary folder
+	TmpPythonFolder = "python"
+
+	// TmpGoFolder is the name of the golang temporary folder
+	TmpGoFolder = "golang"
+
+	// TmpCppFolder is the name of the c++ temporary folder
+	TmpCppFolder = "cpp"
+
+	// TmpRubyFolder is the name of the ruby temporary folder
+	TmpRubyFolder = "ruby"
+
+	// TmpNodeJSFolder is the name of the nodejs temporary folder
+	TmpNodeJSFolder = "nodejs"
+
+	// TmpJavaFolder is the name of the java temporary folder
+	TmpJavaFolder = "java"
+
+	// WorkerRegisterKey is the used key for worker registration secret
+	WorkerRegisterKey = "WORKER_REGISTER_KEY"
+
+	// ExecutablePermission is the permission used for Bhojpur Belaur created executables.
+	ExecutablePermission = 0700
+
+	// StartReasonRemote label for pipelines which were triggered through a remote token.
+	StartReasonRemote = "remote"
+
+	// StartReasonManual label for pipelines which were triggered through the admin site.
+	StartReasonManual = "manual"
+
+	// StartReasonScheduled label for pipelines which were triggered automated process, i.e. cron job.
+	StartReasonScheduled = "scheduled"
+
+	// SecretNamePrefix defines the prefix for github secrets for pipelines.
+	SecretNamePrefix = "GITHUB_WEBHOOK_SECRET_"
+
+	// LegacySecretName is the old name for a secret that has been created by previous versions.
+	// Deprecated
+	LegacySecretName = "GITHUB_WEBHOOK_SECRET"
+)
+
+// JwtExpiry is the default JWT expiry.
+const JwtExpiry = 12 * 60 * 60
+
+// JwtCustomClaims is the custom JWT claims for Bhojpur Belaur session.
+type JwtCustomClaims struct {
+	Username string   `json:"username"`
+	Roles    []string `json:"roles"`
+	jwt.StandardClaims
+}
+
+// User is the user object
+type User struct {
+	Username     string    `json:"username,omitempty"`
+	Password     string    `json:"password,omitempty"`
+	DisplayName  string    `json:"display_name,omitempty"`
+	Tokenstring  string    `json:"tokenstring,omitempty"`
+	JwtExpiry    int64     `json:"jwtexpiry,omitempty"`
+	LastLogin    time.Time `json:"lastlogin,omitempty"`
+	TriggerToken string    `json:"trigger_token,omitempty"`
+}
+
+// UserPermission is stored in its own data structure away from the core user. It represents all permission data
+// for a single user.
+type UserPermission struct {
+	Username string   `json:"username"`
+	Roles    []string `json:"roles"`
+	Groups   []string `json:"groups"`
+}
+
+// UserRoleCategory represents the top-level of the permission role system
+type UserRoleCategory struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Roles       []*UserRole `json:"roles"`
+}
+
+// UserRole represents a single permission role.
+type UserRole struct {
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	APIEndpoint []*UserRoleEndpoint `json:"api_endpoints"`
+}
+
+// UserRoleEndpoint represents the path and method of the API endpoint to be secured.
+type UserRoleEndpoint struct {
+	Path   string `json:"path"`
+	Method string `json:"method"`
+}
+
+// Pipeline represents a single pipeline
+type Pipeline struct {
+	ID                int          `json:"id,omitempty"`
+	Name              string       `json:"name,omitempty"`
+	Repo              *GitRepo     `json:"repo,omitempty"`
+	Type              PipelineType `json:"type,omitempty"`
+	ExecPath          string       `json:"execpath,omitempty"`
+	SHA256Sum         []byte       `json:"sha256sum,omitempty"`
+	Jobs              []*Job       `json:"jobs,omitempty"`
+	Created           time.Time    `json:"created,omitempty"`
+	UUID              string       `json:"uuid,omitempty"`
+	IsNotValid        bool         `json:"notvalid,omitempty"`
+	PeriodicSchedules []string     `json:"periodicschedules,omitempty"`
+	TriggerToken      string       `json:"trigger_token,omitempty"`
+	Tags              []string     `json:"tags,omitempty"`
+	Docker            bool         `json:"docker"`
+	CronInst          *cron.Cron   `json:"-"`
+}
+
+// GitRepo represents a single git repository
+type GitRepo struct {
+	URL            string     `json:"url,omitempty"`
+	Username       string     `json:"user,omitempty"`
+	Password       string     `json:"password,omitempty"`
+	PrivateKey     PrivateKey `json:"privatekey,omitempty"`
+	SelectedBranch string     `json:"selectedbranch,omitempty"`
+	Branches       []string   `json:"branches,omitempty"`
+	LocalDest      string     `json:"-"`
+}
+
+// Job represents a single job of a pipeline
+type Job struct {
+	ID           uint32      `json:"id,omitempty"`
+	Title        string      `json:"title,omitempty"`
+	Description  string      `json:"desc,omitempty"`
+	DependsOn    []*Job      `json:"dependson,omitempty"`
+	Status       JobStatus   `json:"status,omitempty"`
+	Args         []*Argument `json:"args,omitempty"`
+	FailPipeline bool        `json:"failpipeline,omitempty"`
+}
+
+// Argument represents a single argument of a job
+type Argument struct {
+	Description string `json:"desc,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Key         string `json:"key,omitempty"`
+	Value       string `json:"value,omitempty"`
+}
+
+// CreatePipeline represents a pipeline which is not yet
+// compiled.
+type CreatePipeline struct {
+	ID          string             `json:"id,omitempty"`
+	Pipeline    Pipeline           `json:"pipeline,omitempty"`
+	Status      int                `json:"status,omitempty"`
+	StatusType  CreatePipelineType `json:"statustype,omitempty"`
+	Output      string             `json:"output,omitempty"`
+	Created     time.Time          `json:"created,omitempty"`
+	GitHubToken string             `json:"githubtoken,omitempty"`
+}
+
+// PrivateKey represents a pem encoded private key
+type PrivateKey struct {
+	Key      string `json:"key,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
+// PipelineRun represents a single run of a pipeline.
+type PipelineRun struct {
+	UniqueID       string            `json:"uniqueid"`
+	ID             int               `json:"id"`
+	PipelineID     int               `json:"pipelineid"`
+	StartDate      time.Time         `json:"startdate,omitempty"`
+	StartReason    string            `json:"started_reason"`
+	FinishDate     time.Time         `json:"finishdate,omitempty"`
+	ScheduleDate   time.Time         `json:"scheduledate,omitempty"`
+	Status         PipelineRunStatus `json:"status,omitempty"`
+	Jobs           []*Job            `json:"jobs,omitempty"`
+	PipelineType   PipelineType      `json:"pipelinetype,omitempty"`
+	PipelineTags   []string          `json:"pipelinetags,omitempty"`
+	Docker         bool              `json:"docker,omitempty"`
+	DockerWorkerID string            `json:"dockerworkerid,omitempty"`
+}
+
+// Worker represents a single registered worker.
+type Worker struct {
+	UniqueID     string       `json:"uniqueid"`
+	Name         string       `json:"name"`
+	Status       WorkerStatus `json:"status"`
+	Slots        int32        `json:"slots"`
+	RegisterDate time.Time    `json:"registerdate"`
+	LastContact  time.Time    `json:"lastcontact"`
+	FinishedRuns int64        `json:"finishedruns"`
+	Tags         []string     `json:"tags"`
+}
+
+// SHAPair struct contains the original sha of a pipeline executable and the
+// new sha which was created when the worker had to rebuild it.
+type SHAPair struct {
+	Original   []byte `json:"original"`
+	Worker     []byte `json:"worker"`
+	PipelineID int    `json:"pipelineid"`
+}
+
+// Cfg represents the global config instance
+var Cfg = &Config{}
+
+// Config holds all config options
+type Config struct {
+	DevMode                 bool
+	ModeRaw                 string
+	Mode                    Mode
+	VersionSwitch           bool
+	Poll                    bool
+	PVal                    int
+	ListenPort              string
+	HomePath                string
+	Hostname                string
+	VaultPath               string
+	DataPath                string
+	PipelinePath            string
+	WorkspacePath           string
+	Worker                  int
+	JwtPrivateKeyPath       string
+	JWTKey                  interface{}
+	Logger                  hclog.Logger
+	CAPath                  string
+	WorkerServerPort        string
+	PreventPrimaryWork      bool
+	AutoDockerMode          bool
+	DockerHostURL           string
+	DockerRunImage          string
+	DockerWorkerHostURL     string
+	DockerWorkerGRPCHostURL string
+	RBACEnabled             bool
+	RBACDebug               bool
+
+	// Worker
+	WorkerName        string
+	WorkerHostURL     string
+	WorkerGRPCHostURL string
+	WorkerSecret      string
+	WorkerTags        string
+
+	Bolt struct {
+		Mode os.FileMode
+	}
+}
+
+// StoreConfig defines config settings to be stored in DB.
+type StoreConfig struct {
+	ID          int
+	Poll        bool
+	RBACEnabled bool
+}
+
+// String returns a pipeline type string back
+func (p PipelineType) String() string {
+	return string(p)
+}

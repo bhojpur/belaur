@@ -1,0 +1,113 @@
+project_name: belaur
+before:
+  hooks:
+    - go mod tidy
+    - make compile_frontend static_assets
+dist: release
+source:
+  enabled: true
+  name_template: '{{ .ProjectName }}-{{ .Tag }}-source'
+checksum:
+  name_template: '{{ .ProjectName }}-{{ .Tag }}-checksums.txt'
+builds:
+  - id: belaur
+    env:
+      - CGO_ENABLED=0
+    main: server.go
+    binary: belaur
+    ldflags:
+      - -s -w
+      - -X "github.com/bhojpur/belaur/pkg/version.Version={{.Version}}-{{.ShortCommit}}"
+      - -X "github.com/bhojpur/belaur/pkg/version.BuildTime={{ time "2006-01-02 15:04:05 MST" }}"
+      - -X "github.com/bhojpur/belaur/pkg/version.BuildCommit={{ .FullCommit }}"
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - 386
+archives:
+  - id: belaur
+    files:
+    - "none*"
+    format: binary # this removes the tar of the archives, leaving the binaries alone
+    name_template: belaur-{{ .Tag }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}
+    builds:
+    - belaur
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      386: i386
+      amd64: x86_64
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^Merge pull request'
+release:
+  prerelease: auto
+  header: |
+    Bhojpur Belaur applies a configuration to the system described with yaml files. It uses a
+    simple, yet powerful distro-agnostic cloud-init style format for the definition.
+dockers:
+  - image_templates:
+    - "bhojpur/belaur:latest"
+    - "bhojpur/belaur:{{ .Tag }}"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile
+    extra_files:
+    - docker/docker-entrypoint.sh
+    - docker/settings-docker.xml
+  - image_templates:
+    - "bhojpur/belaur:latest-go"
+    - "bhojpur/belaur:{{ .Tag }}-go"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.golang
+    extra_files:
+    - docker/docker-entrypoint.sh
+  - image_templates:
+    - "bhojpur/belaur:latest-java"
+    - "bhojpur/belaur:{{ .Tag }}-java"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.java
+    extra_files:
+    - docker/docker-entrypoint.sh
+    - docker/settings-docker.xml
+  - image_templates:
+    - "bhojpur/belaur:latest-python"
+    - "bhojpur/belaur:{{ .Tag }}-python"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.python
+    extra_files:
+    - docker/docker-entrypoint.sh
+  - image_templates:
+    - "bhojpur/belaur:latest-cpp"
+    - "bhojpur/belaur:{{ .Tag }}-cpp"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.cpp
+    extra_files:
+    - docker/docker-entrypoint.sh
+  - image_templates:
+    - "bhojpur/belaur:latest-ruby"
+    - "bhojpur/belaur:{{ .Tag }}-ruby"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.ruby
+    extra_files:
+    - docker/docker-entrypoint.sh
+  - image_templates:
+    - "bhojpur/belaur:latest-nodejs"
+    - "bhojpur/belaur:{{ .Tag }}-nodejs"
+    binaries:
+    - belaur-linux-amd64
+    dockerfile: docker/Dockerfile.nodejs
+    extra_files:
+    - docker/docker-entrypoint.sh

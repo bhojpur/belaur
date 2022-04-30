@@ -1,0 +1,105 @@
+version: "3"
+
+vars:
+  GREETING: Hello, Bhojpur Belaur Developer!
+
+tasks:
+    default:
+        cmds:
+        - echo "{{.GREETING}}"
+        silent: true
+
+    build-tools:
+        desc: Build the software tools (i.e. Belaur CLI)
+        cmds:
+        - GOFLAGS=-mod=mod go build -o bin/belaur ./cmd/server/main.go 
+        - chmod 755 bin/belaur
+        - cp bin/belaur $GOPATH/bin
+
+    build-web:
+        desc: Build the web application (i.e., Belaur Dashboard)
+        cmds:
+        - make compile_frontend 
+        - make static_assets 
+        - make compile_backend 
+
+    build-desktop:
+        desc: Build the desktop application for current OS
+        cmds:
+        - guiutl package -name "Bhojpur Belaur" -os darwin -icon internal/Icon.png
+        - guiutl package -name "Bhojpur Belaur" -os linux -icon internal/Icon.png
+        - guiutl package -name "Bhojpur Belaur" -os windows -icon internal/Icon.png
+
+    package-android:
+        desc: Package the mobile application for Android
+        cmds:
+        - guiutl package -os android -appID net.bhojpur.belaur -icon internal/Icon.png
+
+    package-ios:
+        desc: Package the mobile application for iOS
+        cmds:
+        - guiutl package -os ios -appID net.bhojpur.belaur -icon internal/Icon.png
+
+    release-macos:
+        desc: Release the native application for macOS App Store
+        cmds:
+        - guiutl release -appID net.bhojpur.belaur -appVersion 1.0 -appBuild 1 -category business
+
+    release-android:
+        desc: Release the mobile application for Google Play
+        cmds:
+        - guiutl release -os android -appID net.bhojpur.belaur -appVersion 1.0 -appBuild 1
+
+    release-ios:
+        desc: Release the mobile application for iOS App Store
+        cmds:
+        - guiutl release -os ios -appID net.bhojpur.belaur -appVersion 1.0 -appBuild 1
+
+    run-web-server:
+        desc: Run the web server application from source code
+        cmds:
+        - GOFLAGS=-mod=mod go run server.go
+ 
+    run-web-client:
+        desc: Run the web client application from source code
+        cmds:
+        - GOFLAGS=-mod=mod go run client.go
+
+    run-mobile:
+        desc: Run the mobile client application on emulator
+        cmds:
+        - GOFLAGS=-mod=mod go run -tags mobile native/main.go
+
+    run-desktop: 
+        desc: Run the desktop application on local host
+        cmds:
+        - GOFLAGS=-mod=mod go run native/main.go
+
+    generate:
+        desc: Generate Go source code from Protocol Buffers
+        cmds:
+        - protoc --go_out=./pkg/api --go_opt=module=github.com/bhojpur/belaur/pkg/api pkg/api/v1/plugin/plugin.proto
+        - protoc --go-grpc_out=. --go-grpc_opt=paths=source_relative pkg/api/v1/plugin/plugin.proto
+        - protoc --go_out=./pkg/api --go_opt=module=github.com/bhojpur/belaur/pkg/api pkg/api/v1/worker/worker.proto
+        - protoc --go-grpc_out=. --go-grpc_opt=paths=source_relative pkg/api/v1/worker/worker.proto
+
+    test:
+        desc: Execute all the Unit Tests
+        cmds:
+        - gotestsum --junitfile test-results/unit-tests.xml -- -short -race -cover -coverprofile test-results/cover.out ./...
+
+    swagger.gen:
+        desc: Generate Go code
+        cmds:
+        - /usr/bin/swagger generate server -f ./pkg/swagger/swagger.yaml --copyright-file=./pkg/swagger/boilerplate.go.txt --server-package=pkg/machine/server --model-package=pkg/machine/models --main-package=machine/server
+        - /usr/bin/swagger generate client -f ./pkg/swagger/swagger.yaml --copyright-file=./pkg/swagger/boilerplate.go.txt --client-package=pkg/api/machine --model-package=pkg/machine/models --skip-models
+
+    swagger.validate:
+        desc: Validate all the Swagger API specifications
+        cmds:
+        - /usr/bin/swagger validate ./pkg/swagger/swagger.yml
+
+    swagger.doc:
+        desc: Generate documentation for Swagger specified APIs
+        cmds:
+        - docker run -i yousan/swagger-yaml-to-html < pkg/swagger/swagger.yml > doc/index.html
